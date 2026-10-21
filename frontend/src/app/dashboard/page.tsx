@@ -336,7 +336,7 @@ export default function DashboardPage() {
             <div className="mt-3">
               <div className="text-xl sm:text-2xl font-black text-white tracking-tight">{passRate}%</div>
               <p className="text-[10px] sm:text-[11px] text-slate-400 mt-1">
-                {passedJobs} of {totalJobs || 1} checks verified
+                {totalJobs === 0 ? 'Ready for first run' : `${passedJobs} of ${totalJobs} checks verified`}
               </p>
             </div>
           </div>
@@ -372,7 +372,7 @@ export default function DashboardPage() {
                 ~{hoursSaved} <span className="text-xs font-normal text-amber-300">hrs</span>
               </div>
               <p className="text-[10px] sm:text-[11px] text-amber-400/90 font-medium mt-1">
-                ⚡ Est. $1,400+ Dev Value
+                {totalJobs === 0 ? 'ROI tracks with executions' : `⚡ Est. $${Math.round(parseFloat(hoursSaved) * 85)}+ Dev Value`}
               </p>
             </div>
           </div>
