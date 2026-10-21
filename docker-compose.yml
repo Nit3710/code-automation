@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: maintenance-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: platform_user
+      POSTGRES_PASSWORD: platform_secret_password
+      POSTGRES_DB: maintenance_platform
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U platform_user -d maintenance_platform"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: maintenance-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/maintenance_platform
+      SPRING_DATASOURCE_USERNAME: platform_user
+      SPRING_DATASOURCE_PASSWORD: platform_secret_password
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      AI_PROVIDER_ENABLED: "true"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: maintenance-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8080/api
+
+volumes:
+  pgdata:

@@ -1,0 +1,29 @@
+# Maven & Build Output
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+# Local Sandboxed Workspace Storage
+workspace-storage/
+
+# Local Secrets Configuration (Never commit to Git)
+src/main/resources/application-local.yml
+src/main/resources/application-local.properties
+.env
+
+# Logs
+*.log
+logs/
+
+# IDE Configuration
+.idea/
+*.iml
+.classpath
+.project
+.settings/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,52 @@
+# ==========================================
+# AutoMaintain - Root .gitignore
+# ==========================================
+
+# Operating System Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# IDE & Editor Directories
+.idea/
+*.iml
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.project
+.classpath
+.settings/
+
+# Backend Build & Storage Artifacts
+backend/target/
+backend/.flattened-pom.xml
+backend/workspace-storage/
+backend/*.log
+backend/src/main/resources/application-local.yml
+backend/src/main/resources/application-local.properties
+
+# Frontend Build & Dependencies
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+frontend/.env.local
+frontend/.env*.local
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/.pnpm-debug.log*
+
+# Secrets, Environment Files & Keys
+.env
+.env.local
+*.pem
+*.key

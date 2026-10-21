@@ -1,0 +1,7 @@
+# Example Local Developer Overrides
+# Copy this file to application-local.yml to set your personal keys locally
+app:
+  ai:
+    api-key: "YOUR_GEMINI_API_KEY_HERE"
+  github:
+    token: "YOUR_GITHUB_PERSONAL_ACCESS_TOKEN_HERE"
