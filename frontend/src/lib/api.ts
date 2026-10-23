@@ -99,11 +99,14 @@ export const api = {
   },
   github: {
     listRepos: (workspaceId: number, username: string, token?: string) => {
+      let endpoint = `/workspaces/${workspaceId}/github/repos?username=${encodeURIComponent(username)}`;
       const headers: Record<string, string> = {};
       if (token && token.trim()) {
-        headers['X-GitHub-Token'] = token.trim();
+        const cleanToken = token.trim();
+        headers['X-GitHub-Token'] = cleanToken;
+        endpoint += `&token=${encodeURIComponent(cleanToken)}`;
       }
-      return request<any[]>(`/workspaces/${workspaceId}/github/repos?username=${encodeURIComponent(username)}`, { headers });
+      return request<any[]>(endpoint, { headers });
     },
     importRepo: (workspaceId: number, data: any) =>
       request<any>(`/workspaces/${workspaceId}/github/import`, { method: 'POST', body: JSON.stringify(data) }),
