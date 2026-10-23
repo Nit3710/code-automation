@@ -22,9 +22,12 @@ public class GitHubController {
     public ResponseEntity<ApiResponse<List<GitHubIntegrationService.GitHubRepoItem>>> getGitHubRepositories(
             @PathVariable Long workspaceId,
             @RequestParam String username,
+            @RequestHeader(value = "X-GitHub-Token", required = false) String headerToken,
+            @RequestParam(required = false) String token,
             @AuthenticationPrincipal User currentUser) {
+        String effectiveToken = (headerToken != null && !headerToken.isBlank()) ? headerToken : token;
         List<GitHubIntegrationService.GitHubRepoItem> repos =
-                gitHubIntegrationService.fetchUserRepositories(username, workspaceId, currentUser);
+                gitHubIntegrationService.fetchUserRepositories(username, workspaceId, currentUser, effectiveToken);
         return ResponseEntity.ok(ApiResponse.ok("Repositories fetched successfully", repos));
     }
 

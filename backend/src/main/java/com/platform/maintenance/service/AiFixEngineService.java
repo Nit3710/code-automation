@@ -40,6 +40,32 @@ public class AiFixEngineService {
     @Value("${app.github.token:}")
     private String githubToken;
 
+    private String getEffectiveGitHubToken(RepositoryEntity repo) {
+        if (repo != null && repo.getCloneUrl() != null) {
+            String cloneUrl = repo.getCloneUrl();
+            if (cloneUrl.contains("@github.com")) {
+                try {
+                    int atIdx = cloneUrl.indexOf("@github.com");
+                    String credPart = cloneUrl.substring(0, atIdx);
+                    if (credPart.contains("://")) {
+                        credPart = credPart.substring(credPart.indexOf("://") + 3);
+                    }
+                    if (credPart.contains(":")) {
+                        String[] parts = credPart.split(":");
+                        String cand = parts[parts.length - 1];
+                        if (!cand.isBlank()) return cand.trim();
+                    } else if (!credPart.isBlank()) {
+                        return credPart.trim();
+                    }
+                } catch (Exception ignored) {}
+            }
+        }
+        if (githubToken != null && !githubToken.isBlank() && !githubToken.contains("YOUR_") && !githubToken.equals("placeholder-token")) {
+            return githubToken.trim();
+        }
+        return null;
+    }
+
     @Transactional
     public FixAttempt attemptVerifiedFix(Long workspaceId, Long jobId, User currentUser) {
         if (currentUser != null) {
@@ -109,14 +135,15 @@ public class AiFixEngineService {
             String prUrl = null;
 
             // Push verified fix branch directly to GitHub if token is available
-            if (githubToken != null && !githubToken.isBlank()) {
+            String tokenToUse = getEffectiveGitHubToken(repo);
+            if (tokenToUse != null && !tokenToUse.isBlank()) {
                 try {
                     executionEngineService.executeCommand("git config user.name \"AutoMaintain Bot\"", workingDir, 10);
                     executionEngineService.executeCommand("git config user.email \"bot@automaintain.ai\"", workingDir, 10);
                     executionEngineService.executeCommand("git add -A", workingDir, 10);
                     executionEngineService.executeCommand("git commit -m \"fix: autonomous verified fix for run #" + job.getId() + "\"", workingDir, 10);
 
-                    String authenticatedPushUrl = "https://" + githubToken + "@github.com/" + repo.getFullName() + ".git";
+                    String authenticatedPushUrl = "https://" + tokenToUse + "@github.com/" + repo.getFullName() + ".git";
                     ExecutionEngineService.StepExecutionResult pushRes =
                             executionEngineService.executeCommand("git push " + authenticatedPushUrl + " " + branchName + " --force", workingDir, 60);
                     log.info("Pushed fix branch {} to GitHub remote for {}: exitCode={}", branchName, repo.getFullName(), pushRes.getExitCode());
@@ -127,7 +154,8 @@ public class AiFixEngineService {
                             String url = "https://api.github.com/repos/" + repo.getFullName() + "/pulls";
                             HttpHeaders headers = new HttpHeaders();
                             headers.setContentType(MediaType.APPLICATION_JSON);
-                            headers.set("Authorization", "Bearer " + githubToken);
+                            String authHeader = tokenToUse.startsWith("ghp_") ? "token " + tokenToUse : "Bearer " + tokenToUse;
+                            headers.set("Authorization", authHeader);
                             headers.set("Accept", "application/vnd.github.v3+json");
                             headers.set("User-Agent", "AutoMaintain-Platform");
 
@@ -201,17 +229,22 @@ public class AiFixEngineService {
         RepositoryEntity repo = job.getRepository();
 
         // If GitHub token is present, attempt real PR creation via GitHub API
-        if (githubToken != null && !githubToken.isBlank()) {
+        String tokenToUse = getEffectiveGitHubToken(repo);
+        if (tokenToUse == null || tokenToUse.isBlank()) {
+            throw new IllegalStateException("A GitHub Personal Access Token is required to create a Pull Request on " + repo.getFullName() + ". Please connect the repository with a valid token or configure GITHUB_TOKEN on the server.");
+        }
+        if (tokenToUse != null && !tokenToUse.isBlank()) {
             try {
                 RestTemplate restTemplate = new RestTemplate();
                 ObjectMapper mapper = new ObjectMapper();
+                String authHeader = tokenToUse.startsWith("ghp_") ? "token " + tokenToUse : "Bearer " + tokenToUse;
 
                 // 1. Check if PR already exists for this branch
                 try {
                     String owner = repo.getFullName().contains("/") ? repo.getFullName().split("/")[0] : repo.getFullName();
                     String searchUrl = "https://api.github.com/repos/" + repo.getFullName() + "/pulls?head=" + owner + ":" + fix.getBranchName();
                     HttpHeaders getHeaders = new HttpHeaders();
-                    getHeaders.set("Authorization", "Bearer " + githubToken);
+                    getHeaders.set("Authorization", authHeader);
                     getHeaders.set("Accept", "application/vnd.github.v3+json");
                     getHeaders.set("User-Agent", "AutoMaintain-Platform");
                     HttpEntity<Void> getEntity = new HttpEntity<>(getHeaders);
@@ -232,7 +265,7 @@ public class AiFixEngineService {
                 String url = "https://api.github.com/repos/" + repo.getFullName() + "/pulls";
                 HttpHeaders headers = new HttpHeaders();
                 headers.setContentType(MediaType.APPLICATION_JSON);
-                headers.set("Authorization", "Bearer " + githubToken);
+                headers.set("Authorization", authHeader);
                 headers.set("Accept", "application/vnd.github.v3+json");
                 headers.set("User-Agent", "AutoMaintain-Platform");
 

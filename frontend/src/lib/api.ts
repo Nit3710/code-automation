@@ -31,7 +31,7 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   }
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 12000);
+  const timeoutId = setTimeout(() => controller.abort(), 35000);
 
   try {
     const res = await fetch(`${API_BASE}${endpoint}`, {
@@ -41,12 +41,20 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     });
     clearTimeout(timeoutId);
 
-    const json = await res.json();
-    if (!res.ok || json.success === false) {
-      throw new Error(json.message || 'Request failed');
+    const text = await res.text();
+    let json: any = null;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      // Response was plain text or HTML
     }
 
-    return json.data as T;
+    if (!res.ok || (json && json.success === false)) {
+      const errorMsg = (json && json.message) || (text && text.length < 200 ? text : `Request failed with status ${res.status}`);
+      throw new Error(errorMsg);
+    }
+
+    return (json ? json.data : null) as T;
   } catch (err: any) {
     clearTimeout(timeoutId);
     if (err.name === 'AbortError') {
@@ -90,8 +98,13 @@ export const api = {
       request<any>(`/workspaces/${workspaceId}/jobs/${jobId}/cancel`, { method: 'POST' }),
   },
   github: {
-    listRepos: (workspaceId: number, username: string) =>
-      request<any[]>(`/workspaces/${workspaceId}/github/repos?username=${encodeURIComponent(username)}`),
+    listRepos: (workspaceId: number, username: string, token?: string) => {
+      const headers: Record<string, string> = {};
+      if (token && token.trim()) {
+        headers['X-GitHub-Token'] = token.trim();
+      }
+      return request<any[]>(`/workspaces/${workspaceId}/github/repos?username=${encodeURIComponent(username)}`, { headers });
+    },
     importRepo: (workspaceId: number, data: any) =>
       request<any>(`/workspaces/${workspaceId}/github/import`, { method: 'POST', body: JSON.stringify(data) }),
   },

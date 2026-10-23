@@ -61,13 +61,32 @@ public class GitHubIntegrationService {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class ImportRepoRequest {
-        private String fullName; // e.g. "Nit3710/Trading-agent-bot"
+        private String fullName; // e.g. "org/repo"
         private String name;
         private String cloneUrl;
         private String defaultBranch;
+        private String githubToken;
     }
 
-    public List<GitHubRepoItem> fetchUserRepositories(String username, Long workspaceId, User currentUser) {
+    private String getEffectiveGitHubToken(String customToken) {
+        if (customToken != null && !customToken.isBlank()) {
+            return customToken.trim();
+        }
+        if (githubToken != null && !githubToken.isBlank() && !githubToken.contains("YOUR_") && !githubToken.equals("placeholder-token")) {
+            return githubToken.trim();
+        }
+        return null;
+    }
+
+    private String getAuthHeader(String customToken) {
+        String token = getEffectiveGitHubToken(customToken);
+        if (token == null || token.isBlank()) {
+            return null;
+        }
+        return token.startsWith("ghp_") ? "token " + token : "Bearer " + token;
+    }
+
+    public List<GitHubRepoItem> fetchUserRepositories(String username, Long workspaceId, User currentUser, String customToken) {
         workspaceService.validateWorkspaceAccess(workspaceId, currentUser);
         List<GitHubRepoItem> repoList = new ArrayList<>();
 
@@ -76,8 +95,10 @@ public class GitHubIntegrationService {
             HttpHeaders headers = new HttpHeaders();
             headers.set("User-Agent", "AutoMaintain-Platform");
             headers.set("Accept", "application/vnd.github.v3+json");
-            if (githubToken != null && !githubToken.isBlank()) {
-                headers.set("Authorization", "Bearer " + githubToken);
+
+            String authHeader = getAuthHeader(customToken);
+            if (authHeader != null) {
+                headers.set("Authorization", authHeader);
             }
 
             HttpEntity<Void> entity = new HttpEntity<>(headers);
@@ -102,9 +123,19 @@ public class GitHubIntegrationService {
                             .build());
                 }
             }
+        } catch (org.springframework.web.client.HttpStatusCodeException e) {
+            log.warn("GitHub API error for {}: status={}, body={}", username, e.getStatusCode(), e.getResponseBodyAsString());
+            if (e.getStatusCode() == HttpStatus.FORBIDDEN || e.getStatusCode() == HttpStatus.TOO_MANY_REQUESTS) {
+                throw new IllegalArgumentException("GitHub rate limit reached. Please provide your GitHub Personal Access Token (PAT) with 'repo' scope to continue.");
+            } else if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) {
+                throw new IllegalArgumentException("Invalid GitHub token. Please verify your Personal Access Token.");
+            } else if (e.getStatusCode() == HttpStatus.NOT_FOUND) {
+                throw new IllegalArgumentException("GitHub user or organization '" + username + "' was not found.");
+            }
+            throw new IllegalArgumentException("GitHub API error (" + e.getStatusCode() + "): " + e.getStatusText());
         } catch (Exception e) {
             log.error("Failed to fetch repositories from GitHub for user: {}", username, e);
-            throw new RuntimeException("Could not fetch repositories for GitHub user '" + username + "': " + e.getMessage());
+            throw new IllegalArgumentException("Could not fetch repositories for '" + username + "': " + e.getMessage());
         }
 
         return repoList;
@@ -120,20 +151,29 @@ public class GitHubIntegrationService {
             throw new IllegalArgumentException("Repository " + request.getFullName() + " is already connected in this workspace.");
         }
 
+        String userToken = (request.getGithubToken() != null && !request.getGithubToken().isBlank())
+                ? request.getGithubToken().trim()
+                : null;
+
+        String cloneUrl = request.getCloneUrl();
+        if (userToken != null) {
+            cloneUrl = "https://x-access-token:" + userToken + "@github.com/" + request.getFullName() + ".git";
+        } else if (cloneUrl == null || cloneUrl.isBlank()) {
+            cloneUrl = "https://github.com/" + request.getFullName() + ".git";
+        }
+
         RepositoryEntity repo = RepositoryEntity.builder()
                 .workspace(workspace)
                 .name(request.getName() != null && !request.getName().isBlank() ? request.getName() : request.getFullName())
                 .fullName(request.getFullName())
-                .cloneUrl(request.getCloneUrl() != null && !request.getCloneUrl().isBlank()
-                        ? request.getCloneUrl()
-                        : "https://github.com/" + request.getFullName() + ".git")
+                .cloneUrl(cloneUrl)
                 .defaultBranch(request.getDefaultBranch() != null ? request.getDefaultBranch() : "main")
                 .active(true)
                 .build();
         repo = repositoryEntityRepository.save(repo);
 
         // 1. Instant GitHub Tree Inspection for 100% Zero-Touch Stack & Command Detection
-        RepositoryConfiguration config = inspectAndCreateConfigFromGitHub(repo);
+        RepositoryConfiguration config = inspectAndCreateConfigFromGitHub(repo, userToken);
         config = configurationRepository.save(config);
         repo.setConfiguration(config);
 
@@ -144,7 +184,7 @@ public class GitHubIntegrationService {
         return mapToResponse(repo);
     }
 
-    private RepositoryConfiguration inspectAndCreateConfigFromGitHub(RepositoryEntity repo) {
+    private RepositoryConfiguration inspectAndCreateConfigFromGitHub(RepositoryEntity repo, String customToken) {
         ProjectType detectedType = ProjectType.PYTHON;
         String installCmd = "";
         String buildCmd = "";
@@ -155,8 +195,10 @@ public class GitHubIntegrationService {
             HttpHeaders headers = new HttpHeaders();
             headers.set("User-Agent", "AutoMaintain-Platform");
             headers.set("Accept", "application/vnd.github.v3+json");
-            if (githubToken != null && !githubToken.isBlank()) {
-                headers.set("Authorization", "Bearer " + githubToken);
+
+            String authHeader = getAuthHeader(customToken);
+            if (authHeader != null) {
+                headers.set("Authorization", authHeader);
             }
 
             HttpEntity<Void> entity = new HttpEntity<>(headers);

@@ -20,7 +20,8 @@ import {
   Settings,
   Copy,
   Check,
-  Sparkles
+  Sparkles,
+  Key
 } from 'lucide-react';
 
 export default function DashboardPage() {
@@ -39,7 +40,9 @@ export default function DashboardPage() {
   // Connect repo modal state
   const [showConnectModal, setShowConnectModal] = useState(false);
   const [connectTab, setConnectTab] = useState<'github' | 'manual'>('github');
-  const [githubUsername, setGithubUsername] = useState('Nit3710');
+  const [githubUsername, setGithubUsername] = useState('');
+  const [githubToken, setGithubToken] = useState('');
+  const [showTokenField, setShowTokenField] = useState(false);
   const [githubRepos, setGithubRepos] = useState<any[]>([]);
   const [isFetchingGithub, setIsFetchingGithub] = useState(false);
   const [importingRepoName, setImportingRepoName] = useState<string | null>(null);
@@ -65,6 +68,15 @@ export default function DashboardPage() {
     if (!token) {
       router.replace('/login');
       return;
+    }
+    if (typeof window !== 'undefined') {
+      const savedUser = localStorage.getItem('last_github_username');
+      if (savedUser) setGithubUsername(savedUser);
+      const savedPat = localStorage.getItem('user_github_pat');
+      if (savedPat) {
+        setGithubToken(savedPat);
+        setShowTokenField(true);
+      }
     }
     initDashboard();
   }, []);
@@ -107,11 +119,20 @@ export default function DashboardPage() {
 
   const handleFetchGithubRepos = async (usernameToFetch?: string) => {
     if (!activeWorkspace) return;
-    const user = usernameToFetch || githubUsername;
-    if (!user) return;
+    const user = (usernameToFetch || githubUsername || '').trim();
+    if (!user) {
+      alert('Please enter a GitHub username or organization name.');
+      return;
+    }
     setIsFetchingGithub(true);
     try {
-      const list = await api.github.listRepos(activeWorkspace.id, user);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('last_github_username', user);
+        if (githubToken.trim()) {
+          localStorage.setItem('user_github_pat', githubToken.trim());
+        }
+      }
+      const list = await api.github.listRepos(activeWorkspace.id, user, githubToken);
       setGithubRepos(list);
     } catch (err: any) {
       alert(err.message || 'Failed to fetch GitHub repositories');
@@ -129,6 +150,7 @@ export default function DashboardPage() {
         name: repo.name,
         cloneUrl: repo.cloneUrl,
         defaultBranch: repo.defaultBranch,
+        githubToken: githubToken ? githubToken.trim() : undefined,
       });
       setShowConnectModal(false);
       await loadWorkspaceData(activeWorkspace.id);
@@ -654,25 +676,63 @@ export default function DashboardPage() {
 
             {connectTab === 'github' ? (
               <div className="flex-1 overflow-hidden flex flex-col mt-4">
-                <div className="flex flex-col sm:flex-row gap-2 mb-3">
-                  <div className="flex-1 relative">
-                    <input
-                      type="text"
-                      value={githubUsername}
-                      onChange={(e) => setGithubUsername(e.target.value)}
-                      placeholder="GitHub Username (e.g. Nit3710)"
-                      className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
-                    />
+                <div className="space-y-2.5 mb-3">
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <div className="flex-1 relative">
+                      <input
+                        type="text"
+                        value={githubUsername}
+                        onChange={(e) => setGithubUsername(e.target.value)}
+                        placeholder="GitHub Username or Org (e.g. octocat, your-org)"
+                        className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleFetchGithubRepos()}
+                      disabled={isFetchingGithub}
+                      className="flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-50 w-full sm:w-auto shrink-0 shadow"
+                    >
+                      {isFetchingGithub ? <RotateCw className="h-3.5 w-3.5 animate-spin" /> : null}
+                      {isFetchingGithub ? 'Loading...' : 'Fetch Repositories'}
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => handleFetchGithubRepos()}
-                    disabled={isFetchingGithub}
-                    className="flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-50 w-full sm:w-auto"
-                  >
-                    {isFetchingGithub ? <RotateCw className="h-3.5 w-3.5 animate-spin" /> : null}
-                    {isFetchingGithub ? 'Loading...' : 'Fetch Repositories'}
-                  </button>
+
+                  {/* Personal Access Token (PAT) Configuration */}
+                  <div className="rounded-lg bg-slate-950/80 border border-slate-800/90 p-2.5 text-xs">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-medium text-slate-300 flex items-center gap-1.5">
+                        <Key className="h-3 w-3 text-emerald-400" />
+                        GitHub Personal Access Token (PAT)
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setShowTokenField(!showTokenField)}
+                        className="text-[11px] text-emerald-400 hover:text-emerald-300 transition font-medium"
+                      >
+                        {showTokenField ? 'Hide Token' : (githubToken ? 'Edit Token' : '+ Add PAT (Recommended)')}
+                      </button>
+                    </div>
+
+                    {showTokenField ? (
+                      <div className="mt-2 space-y-1">
+                        <input
+                          type="password"
+                          value={githubToken}
+                          onChange={(e) => setGithubToken(e.target.value)}
+                          placeholder="ghp_xxxxxxxxxxxxxxxxxxxx (needs repo scope)"
+                          className="w-full rounded-md border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-xs font-mono text-slate-200 placeholder-slate-600 focus:border-emerald-500 focus:outline-none"
+                        />
+                        <p className="text-[10px] text-slate-400 leading-normal">
+                          Prevents GitHub rate-limit errors and unlocks private repositories, fix branches, and automated Pull Requests. Token stays saved in your browser session.
+                        </p>
+                      </div>
+                    ) : githubToken ? (
+                      <p className="text-[10px] text-emerald-400/90 mt-1 flex items-center gap-1">
+                        <Check className="h-3 w-3 inline" /> Custom PAT saved (Active for requests & PRs)
+                      </p>
+                    ) : null}
+                  </div>
                 </div>
 
                 <div className="flex-1 overflow-y-auto space-y-2 pr-1 min-h-[220px]">
